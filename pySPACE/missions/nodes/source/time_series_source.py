@@ -110,7 +110,7 @@ class TimeSeriesSourceNode(BaseNode):
         .. todo:: to document
         """
         # If we haven't read the data for testing yet
-        if self.data_for_testing == None:
+        if self.data_for_testing is None:
             self._log("Accessing input dataset's test time series windows.")
             # If the input dataset consists only of one single run,
             # we use this as input for all runs to be conducted (i.e. we
@@ -165,6 +165,10 @@ class Stream2TimeSeriesSourceNode(TimeSeriesSourceNode):
     This is a main difference, since other source nodes, get access to
     the real data and generate a generator object.
 
+    For the segmentation of the data, the
+    :class:`~pySPACE.resources.dataset_defs.stream.StreamDataset`
+    uses the :class:`~pySPACE.missions.support.windower.MarkerWindower`.
+
     **Parameters**
 
         :windower_spec_file:
@@ -181,7 +185,11 @@ class Stream2TimeSeriesSourceNode(TimeSeriesSourceNode):
             is looked up according to the location of the spec files. When
             set to True, the windower spec file can be specified with path (e.g.
             '/home/myuser/myspecs/mywindow.yaml') or without path, which indicates
-            that the window specs file is located in current local folder.
+            that the window specs file is located in current local folder
+            or the specification file folder of the node chain.
+            For the parameterization of the windower configuration file,
+            you should have a look at the documentation
+            of the :class:`~pySPACE.missions.support.windower.MarkerWindower`
 
             (*optional, default: False*)
 
@@ -284,11 +292,33 @@ class Stream2TimeSeriesSourceNode(TimeSeriesSourceNode):
         """
         self._log("Requesting train data...")
         if not use_test_data:
-            # Returns an iterator that iterates over an empty sequence
-            # (i.e. an iterator that is immediately exhausted), since
-            # this node does not provide any data that is explicitly
-            # dedicated for training
-            return (x for x in [].__iter__())
+            # If we haven't read the data for training yet
+            if self.data_for_training is None:
+
+                self._log("Start streaming.")
+
+                self.dataset.set_window_defs(
+                    window_definition=self.window_definition,
+                    nullmarker_stride_ms=self.nullmarker_stride_ms,
+                    no_overlap=self.no_overlap,
+                    data_consistency_check=self.data_consistency_check)
+
+                if self.dataset.meta_data["runs"] > 1:
+                    key = (self.run_number, self.current_split, "train")
+                else:
+                    key = (0, self.current_split, "train")
+
+                # Create a generator that emits the windows
+                train_data_generator = (
+                    (sample, label)
+                    for (sample, label) in self.dataset.get_data(*key))
+
+                self.data_for_training = \
+                    MemoizeGenerator(train_data_generator,
+                                     caching=self.caching)
+
+            # Return a fresh copy of the generator
+            return self.data_for_training.fresh()
         else:
             # Return the test data as there is no additional data that
             # was dedicated for training
@@ -322,7 +352,9 @@ class Stream2TimeSeriesSourceNode(TimeSeriesSourceNode):
                 (sample, label)
                 for (sample, label) in self.dataset.get_data(*key))
 
-            self.data_for_testing = MemoizeGenerator(test_data_generator)
+            self.data_for_testing = \
+                MemoizeGenerator(test_data_generator,
+                                 caching=self.caching)
 
         # Return a fresh copy of the generator
         return self.data_for_testing.fresh()
@@ -345,7 +377,7 @@ class TimeSeries2TimeSeriesSourceNode(Stream2TimeSeriesSourceNode):
     Source node that interprets a stream of time series windows as
     raw data stream.
     The markers stored in marker_name attribute are used as the markers
-    for a MarkerWindower.
+    for a :class:`~pySPACE.missions.support.windower.MarkerWindower`.
 
     This node pretends to be a Stream2TimeSeriesSourceNode
     but takes real time series data and interprets it as a stream.

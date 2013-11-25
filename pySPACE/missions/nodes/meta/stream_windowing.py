@@ -22,19 +22,20 @@ class StreamWindowingNode(BaseNode):
     Node that interprets a stream of incoming time series objects as
     a raw data stream.
     The markers stored in marker_name attribute are used as the markers
-    for a MarkerWindower.
+    for a :class:`~pySPACE.missions.support.windower.MarkerWindower`.
     This should done *before* any splitter, since all incoming windows
     are regarded as parts of a consecutive data stream.
 
     **Parameters**
 
      :windower_spec_file:
-         The window specification file for the MakerWindower.
+         The window specification file for the
+         :class:`~pySPACE.missions.support.windower.MarkerWindower`.
          Used for testing and training, if windower_spec_file_train
          is not specified. 
 
      :windower_spec_file_train:
-         A seperate window file for training only.
+         A separate window file for training only.
          If not specified, windower_spec_file is used for training
          and testing.
 
@@ -83,7 +84,7 @@ class StreamWindowingNode(BaseNode):
         # set window definition for train phase windower file
         self.window_definition = \
             Windower._load_window_spec(self.windower_spec_file_train,
-                                                   self.local_window_conf)
+                                       self.local_window_conf)
 
         self._log("Requesting train data...")
         if self.data_for_training is None:
@@ -91,17 +92,19 @@ class StreamWindowingNode(BaseNode):
                 # Get training and test data (with labels)
                 train_data = \
                     list(self.input_node.request_data_for_training(use_test_data=use_test_data))
-                
+                # If training or test data is an empty list
+                if train_data == []:
+                    self.data_for_training=MemoizeGenerator(
+                        (x for x in [].__iter__()), caching=True)
+                    return self.data_for_training.fresh()
                 # create stream of 
                 self.window_stream(train_data)
 
                 # Create a generator that emits the windows
-                train_data_generator = ((sample, label) \
-                                       for (sample, label) in self.marker_windower)
-        
+                train_data_generator = ((sample, label) for (sample, label)
+                                        in self.marker_windower)
                 self.data_for_training = MemoizeGenerator(train_data_generator, 
-                                                         caching = True)
-                
+                                                          caching=True)
                 return self.data_for_training.fresh()
         
             else:
@@ -122,10 +125,9 @@ class StreamWindowingNode(BaseNode):
             # set window definition for test phase windower file
             self.window_definition = \
                 Windower._load_window_spec(self.windower_spec_file,
-                                                self.local_window_conf)
+                                           self.local_window_conf)
             test_data = list(self.input_node.request_data_for_testing())
-                    
-    
+
             # create stream of windows
             self.window_stream(test_data)
     
