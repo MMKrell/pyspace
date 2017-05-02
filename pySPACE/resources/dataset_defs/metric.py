@@ -20,6 +20,12 @@ import warnings
 import numpy
 from pySPACE.resources.dataset_defs.base import BaseDataset
 from pySPACE.resources.dataset_defs.performance_result import PerformanceResultSummary
+try:
+    sklearn_metrics = True
+    from sklearn.metrics import r2_score, explained_variance_score, \
+        median_absolute_error
+except ImportError:
+    sklearn_metrics = False
 
 class metricdict(defaultdict):
     """ Interface to dictionaries of metrics """
@@ -1266,6 +1272,9 @@ class RegressionDataset(BinaryClassificationDataset):
         - Publisher: Morgan Kaufmann, San Francisco
         - year: 2005
 
+    If scikit-learn is available, the 1-dim regression metrics are used
+    additionally (R2 score, explained variance score, median absolute error).
+
     n-dimensional metrics were variants derived by Mario Michael Krell:
 
     **micro**
@@ -1340,28 +1349,47 @@ class RegressionDataset(BinaryClassificationDataset):
                 numpy.sqrt(metrics["relative_squared_error"])
             metrics["Relative absolute error"] = \
                 metrics["Mean_absolute_error"]/numpy.mean(numpy.abs(a-a.mean()))
-            metrics["Correlation_coefficient"] = numpy.corrcoef(a,p)[0,1]
+            metrics["Correlation_coefficient"] = numpy.corrcoef(a, p)[0, 1]
+            if sklearn_metrics:
+                metrics["Sklearn_R2_score"] = r2_score(a, p)
+                metrics["Sklearn_explained_variance_score"] = \
+                    explained_variance_score(a, p)
+                metrics["Sklearn_median_absolute_error"] = \
+                    median_absolute_error(a, p)
         else:
             # treat arrays like flatten arrays!
-            metrics["micro_mean-squared_error"] = numpy.mean((p-a)**2)
-            metrics["micro_root_mean-squared_error"] = \
-                numpy.sqrt(metrics["micro_mean-squared_error"])
-            metrics["micro_mean_absolute_error"] = numpy.mean(numpy.abs(p-a))
-            metrics["micro_relative_squared_error"] = \
-                metrics["micro_mean-squared_error"]/numpy.var(a)
-            metrics["micro_root_relative_squared_error"] = \
-                numpy.sqrt(metrics["micro_relative_squared_error"])
-            metrics["micro_relative absolute error"] = \
-                metrics["micro_mean_absolute_error"] / \
+            metrics["micro_Mean-squared_error"] = numpy.mean((p-a)**2)
+            metrics["micro_Root_mean-squared_error"] = \
+                numpy.sqrt(metrics["micro_Mean-squared_error"])
+            metrics["micro_Mean_absolute_error"] = numpy.mean(numpy.abs(p-a))
+            metrics["micro_Relative_squared_error"] = \
+                metrics["micro_Mean-squared_error"]/numpy.var(a)
+            metrics["micro_Root_relative_squared_error"] = \
+                numpy.sqrt(metrics["micro_Relative_squared_error"])
+            metrics["micro_Relative_absolute_error"] = \
+                metrics["micro_Mean_absolute_error"] / \
                 numpy.mean(numpy.abs(a-a.mean()))
-            metrics["micro_correlation_coefficient"] = \
+            metrics["micro_Correlation_coefficient"] = \
                 numpy.corrcoef(numpy.reshape(a, a.shape[0]*a.shape[1]),
-                               numpy.reshape(p, p.shape[0]*p.shape[1]))[0,1]
+                               numpy.reshape(p, p.shape[0]*p.shape[1]))[0, 1]
+            if sklearn_metrics:
+                micro_a = numpy.reshape(a, a.shape[0]*a.shape[1])
+                micro_p = numpy.reshape(p, p.shape[0]*p.shape[1])
+                metrics["Sklearn_micro_R2_score"] = r2_score(micro_a, micro_p)
+                metrics["Sklearn_micro_explained_variance_score"] = \
+                    explained_variance_score(micro_a, micro_p)
+                metrics["Sklearn_micro_median_absolute_error"] = \
+                    median_absolute_error(micro_a, micro_p)
             pre_str = []
-            metric_names=["Mean-squared_error","Root_mean-squared_error",
-                          "Mean_absolute_error", "relative_squared_error",
-                          "Root_relative_squared_error",
-                          "relative absolute error", "Correlation_coefficient"]
+            metric_names = [
+                "Mean-squared_error", "Root_mean-squared_error",
+                "Mean_absolute_error", "Relative_squared_error",
+                "Root_relative_squared_error", "Relative_absolute_error",
+                "Correlation_coefficient"]
+            if sklearn_metrics:
+                metric_names.extend(["Sklearn_R2_score",
+                                     "Sklearn_explained_variance_score",
+                                     "Sklearn_median_absolute_error"])
             # project onto one component and calculate separate performance
             for i in range(len(predicted_val[0])):
                 s = "component_"+str(i)+"_"
@@ -1372,15 +1400,21 @@ class RegressionDataset(BinaryClassificationDataset):
                 metrics[s+"Root_mean-squared_error"] = \
                     numpy.sqrt(metrics[s+"Mean-squared_error"])
                 metrics[s+"Mean_absolute_error"] = numpy.mean(numpy.abs(pi-ai))
-                metrics[s+"relative_squared_error"] = \
+                metrics[s+"Relative_squared_error"] = \
                     metrics[s+"Mean-squared_error"]/numpy.var(ai)
                 metrics[s+"Root_relative_squared_error"] = \
                     numpy.sqrt(metrics[s+"Relative_squared_error"])
-                metrics[s+"Relative absolute error"] = \
+                metrics[s+"Relative_absolute_error"] = \
                     metrics[s+"Mean_absolute_error"] / \
                     numpy.mean(numpy.abs(ai-ai.mean()))
                 metrics[s+"Correlation_coefficient"] = \
-                    numpy.corrcoef(ai,pi)[0,1]
+                    numpy.corrcoef(ai,pi)[0, 1]
+                if sklearn_metrics:
+                    metrics[s+"Sklearn_R2_score"] = r2_score(ai, pi)
+                    metrics[s+"Sklearn_explained_variance_score"] = \
+                        explained_variance_score(ai, pi)
+                    metrics[s+"Sklearn_median_absolute_error"] = \
+                        median_absolute_error(ai, pi)
             for metric in metric_names:
                 l = []
                 for pre in pre_str:
